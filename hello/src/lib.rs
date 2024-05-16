@@ -44,6 +44,22 @@ impl ThreadPool {
         }
 }
 
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        for worker in &mut self.workers {
+            println!("Shutting down worker {}", worker.id);
+
+            // call .take() to move thread out of worker
+            // we only have a mutable borrow of each worker and
+            // .join() takes ownership
+            if let Some(thread) = worker.thread.take() {
+                thread.join().unwrap();
+            }
+        }
+    }
+}
+
+
 // item that is sent down the chnnel
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
@@ -51,7 +67,7 @@ type Job = Box<dyn FnOnce() + Send + 'static>;
 // this allows the threads in ThreadPool to WAIT for code that will be sent later
 struct Worker {
     id: usize,
-    thread: thread::JoinHandle<()>,
+    thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
@@ -66,7 +82,7 @@ impl Worker {
         });
         Worker {
             id,
-            thread
+            thread: Some(thread),
         }
     }
 }
