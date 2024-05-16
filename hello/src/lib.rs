@@ -38,12 +38,14 @@ impl ThreadPool {
     // this is how you take in a closure as a parameter
         F: FnOnce() + Send + 'static,
         {
+            let job = Box::new(f);
 
+            self.sender.send(job).unwrap();
         }
 }
 
 // item that is sent down the chnnel
-struct Job;
+type Job = Box<dyn FnOnce() + Send + 'static>;
 
 // picks up code that is to be run and runs it in the Workers thread
 // this allows the threads in ThreadPool to WAIT for code that will be sent later
@@ -55,8 +57,12 @@ struct Worker {
 impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
         // this is the thread that 'holds' the code for the pool
-        let thread = thread::spawn(|| {
-            receiver;
+        let thread = thread::spawn(move || loop {
+            // the call to .recv() blocks, so if there's no job, the current thread will wait
+            let job = receiver.lock().unwrap().recv().unwrap();
+
+            println!("Worker {id} got a job; executing.");
+            job();
         });
         Worker {
             id,
