@@ -6,7 +6,7 @@ use std::{
 // holds the threads awaiting to execute code
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
+    sender: Option<mpsc::Sender<Job>>,
 }
 
 
@@ -30,7 +30,10 @@ impl ThreadPool {
             workers.push(Worker::new(id, Arc::clone(&receiver)));
         }
 
-        ThreadPool { workers, sender }
+        ThreadPool {
+            workers,
+            sender: Some(sender)
+        }
     }
     // will send a job from the ThreadPool to the Worker instances, which will send the job to its thread
     pub fn execute<F>(&self, f: F)
@@ -40,12 +43,16 @@ impl ThreadPool {
         {
             let job = Box::new(f);
 
-            self.sender.send(job).unwrap();
+            self.sender.as_ref().unwrap().send(job).unwrap();
         }
 }
 
 impl Drop for ThreadPool {
     fn drop(&mut self) {
+        // drop sender before joining the worker threads
+        // no more messages sent
+        drop(self.sender.take());
+
         for worker in &mut self.workers {
             println!("Shutting down worker {}", worker.id);
 
@@ -74,11 +81,19 @@ impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
         // this is the thread that 'holds' the code for the pool
         let thread = thread::spawn(move || loop {
-            // the call to .recv() blocks, so if there's no job, the current thread will wait
-            let job = receiver.lock().unwrap().recv().unwrap();
+            let message = receiver.lock().unwrap().recv();
 
-            println!("Worker {id} got a job; executing.");
-            job();
+            // explicitly break loop when recv() returns an error
+            match message {
+                Ok(job) => {
+                    println!("Worker {id} got a job; executing.");
+                    job();
+                },
+                Err(_) => {
+                    println!("Worker {id} disconnected; shutting down.");
+                    break;
+                }
+            }
         });
         Worker {
             id,
