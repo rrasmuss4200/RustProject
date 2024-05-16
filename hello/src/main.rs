@@ -16,7 +16,7 @@ fn main() {
     // processes each connection and produces streams to handle
     let pool = ThreadPool::new(4);
 
-    // .take(n) allows us to specify the number of connections we want to have present
+    // .take(n) allows us to specify n number of connections we want to have present
     for stream in listener.incoming().take(2) {
         let stream = stream.unwrap();
 
