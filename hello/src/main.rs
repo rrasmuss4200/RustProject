@@ -17,7 +17,7 @@ fn main() {
     let pool = ThreadPool::new(4);
 
     // .take(n) allows us to specify n number of connections we want to have present
-    for stream in listener.incoming().take(2) {
+    for stream in listener.incoming().take(10) {
         let stream = stream.unwrap();
 
         pool.execute(|| {
