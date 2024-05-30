@@ -65,7 +65,53 @@ fn main() {
     }
 }
 
-
     // TODO: create queue for incoming tasks. Assign priority values and sort based on time to be execcuted
     // can create function for comparing UTC epoch values that returns true if one occurs before the other
     // and an if statement uses this to determine whether the values will be swapped.
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn conversion_test_valid_timestamp() {
+            let timestamp: String = "2024-06-23 4:22:22".to_string();
+            let expected_epoch: u64 = 1719116542000;
+
+            match timestamp_to_epoch(timestamp) {
+                Ok(epoch) => assert_eq!(epoch, expected_epoch),
+                Err(e) => panic!("Expected Ok({}) but got ERR({})", expected_epoch, e),
+            }
+        }
+
+        #[test]
+        fn conversion_test_no_space() {
+            let timestamp: String = "2024-11-2103:33:32".to_string();
+
+            match timestamp_to_epoch(timestamp) {
+                Ok(epoch) => panic!("Expected Err, but got Ok({})", epoch),
+                Err(e) => assert_eq!(e, "Invalid timestamp format".to_string()),
+            }
+        }
+
+        #[test]
+        fn conversion_test_empty_timestamp() {
+            let timestamp = "".to_string();
+
+            match timestamp_to_epoch(timestamp) {
+                Ok(epoch) => panic!("Expected Err, but got Ok({})", epoch),
+                Err(e) => assert_eq!(e, "Invalid timestamp format".to_string()),
+            }
+        }
+
+        #[test]
+        fn conversion_test_invalid_format_wrong_date() {
+            let timestamp = "2023/05/30 12:34:56".to_string();
+
+            match timestamp_to_epoch(timestamp) {
+                Ok(epoch) => panic!("Expected Err, but got Ok({})", epoch),
+                Err(e) => assert!(e.contains("Failed to parse timestamp")),
+            }
+        }
+
+    }
