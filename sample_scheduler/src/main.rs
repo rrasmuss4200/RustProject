@@ -1,9 +1,77 @@
-use std::{env, time::{SystemTime, Duration}};
+use std::{time::{SystemTime, Duration}, io::{self, Write}};
+use std::fs;
+use std::fs::File;
+use std::path::Path;
 use log::{error, info, debug};
 use log4rs;
 use std::time;
 use chrono::{NaiveDateTime, TimeZone, Utc};
 
+
+fn main() {
+    debug!("Initializing Logger.");
+    if let Err(e) = log4rs::init_file("log4rs.toml", Default::default()) {
+        println!("Error initializing log4rs: {}", e);
+    } else {
+        println!("Logger initialized successfully.");
+    }
+
+    let stdin = io::stdin();
+    let mut command_arg = String::new();
+    stdin.read_line(&mut command_arg).expect("Failed to read command");
+
+    // Read the second line from stdin
+    let mut human_date = String::new();
+    stdin.read_line(&mut human_date).expect("Failed to read date");
+
+    // Convert input human-readable time to epoch time to compare times when program is run
+    let command_time: Result<u64, String> = timestamp_to_epoch(human_date.trim().to_string());
+
+    // while true to keep current time updating?
+    loop {
+    let curr_time: Result<Duration, time::SystemTimeError> = time::SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
+    let curr_time_millis: u64 = match curr_time {
+        Ok(duration) => duration.as_millis() as u64,
+        Err(e) => {eprint!("Error {:?}", e);
+    return;}
+    };
+
+    let now: Result<u64, String> = command_time.clone();
+
+    let input_tuple: (Result<u64, String>, String) = (now.clone(),command_arg.clone());
+
+    if let Err(err) = write_input_tuple_to_rolling_file(&input_tuple) {
+        eprintln!("Failed to write input tuple to file: {}", err);
+    } else {
+        println!("Input tuple written to file successfully.");
+    }
+
+    println!("Command Time: {:?} ms, Command: {}\nUnix Epoch is {:?} ms", input_tuple.0.unwrap(), input_tuple.1, curr_time_millis);
+
+    let mut msg = Message {
+        time: command_time.clone(),
+        state: MessageState::New,
+        id: 0,
+        command: command_arg.clone(),
+    };
+
+    if msg.time >= Ok(curr_time_millis) {
+        // Send to CmdDispathcer
+        msg.state = MessageState::Running;
+        handle_state(msg);
+        println!("Sent to CmdDispatcher");
+    } else {
+        error!("Command is of type 'now'. Should have been dispatched.");
+        eprint!("Error: Command was before Unix Epoch.\n");
+    }
+    }
+
+
+    // TODO: create queue of incoming tasks. Assign priority values and sort based on time to be execcuted
+    // can create function for comparing UTC epoch values that returns true if one occurs before the other
+    // and an if statement uses this to determine whether the values will be swapped
+
+}
 // enum of different states of a process
 pub enum MessageState {
     New,
@@ -12,7 +80,6 @@ pub enum MessageState {
     Running,
     Done,
 }
-
 
 pub struct Message {
     time: Result<u64, String>,
@@ -46,9 +113,17 @@ fn handle_state(msg: Message) {
 }
 
 fn timestamp_to_epoch(timestamp: String) -> Result<u64, String> {
-    // RETURNS VALUE IN MILLISECONDS
-    // Parse the input timestamp using NaiveDateTime from the chrono crate
-    match NaiveDateTime::parse_from_str(&timestamp, "%Y-%m-%d %H:%M:%S") {
+    // Split the input timestamp into date and time parts
+    let parts: Vec<&str> = timestamp.split(' ').collect();
+    if parts.len() != 2 {
+        return Err("Invalid timestamp format".to_string());
+    }
+
+    let date_str = parts[0];
+    let time_str = parts[1];
+
+    // Parse the input date and time separately using NaiveDateTime from the chrono crate
+    match NaiveDateTime::parse_from_str(&format!("{} {}", date_str, time_str), "%Y-%m-%d %H:%M:%S") {
         Ok(naive_date_time) => {
             // Convert the NaiveDateTime to a DateTime<Utc> object
             let date_time_utc = Utc.from_utc_datetime(&naive_date_time);
@@ -61,55 +136,44 @@ fn timestamp_to_epoch(timestamp: String) -> Result<u64, String> {
     }
 }
 
-fn main() {
-    debug!("Initializing Logger.");
-    if let Err(e) = log4rs::init_file("log4rs.toml", Default::default()) {
-        println!("Error initializing log4rs: {}", e);
-    } else {
-        println!("Logger initialized successfully.");
+fn write_input_tuple_to_rolling_file(input_tuple: &(Result<u64, String>, String)) -> Result<(), io::Error> {
+    // Create the directory if it doesn't exist
+    let dir_path = "saved_commands";
+    fs::create_dir_all(dir_path)?;
+
+    // Get the total size of files in the directory
+    let total_size: u64 = fs::read_dir(dir_path)?
+        .filter_map(|res| res.ok())
+        .map(|entry| entry.metadata().ok().map(|m| m.len()).unwrap_or(0))
+        .sum();
+
+    // Specify the maximum size in bytes
+    let max_size_bytes: u64 = 2048; // 2 KB
+
+    // If the total size exceeds the maximum size, remove the oldest file
+    if total_size >= max_size_bytes {
+        remove_oldest_file(&dir_path)?;
     }
 
-    let args: Vec<String> = env::args().collect();
-    let command_arg: String = args[1].parse::<String>().unwrap();
-    // YYYY-MM-DD HH:MM:SS
-    let human_date: String = args[2].parse::<String>().unwrap();
+    // Create a new file
+    let file_name = format!("{}.txt", Utc::now().timestamp_millis());
+    let file_path = Path::new(dir_path).join(&file_name);
+    let mut file = File::create(&file_path)?;
 
-    // Convert input human-readalbe time to epoch time to compare times when program is run
-    let command_time: Result<u64, String> = timestamp_to_epoch(human_date);
+    // Write input_tuple to the file
+    writeln!(file, "Command Time: {:?} ms, Command: {}", input_tuple.0.as_ref().unwrap(), input_tuple.1)?;
 
-    // while true to keep current time updating
+    Ok(())
+}
 
-    let curr_time: Result<Duration, time::SystemTimeError> = time::SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
-    let curr_time_millis: u64 = match curr_time {
-        Ok(duration) => duration.as_millis() as u64,
-        Err(e) => {eprint!("Error {:?}", e);
-    return;}
-    };
+fn remove_oldest_file(dir_path: &str) -> Result<(), io::Error> {
+    let oldest_file = fs::read_dir(dir_path)?
+        .filter_map(|res| res.ok())
+        .min_by_key(|entry| entry.metadata().unwrap().modified().unwrap());
 
-    let now: Result<u64, String> = command_time.clone();
-
-    let input_tuple: (Result<u64, String>, String) = (now.clone(),command_arg.clone());
-
-    println!("Command Time: {:?} ms, Command: {}\nUnix Epoch is {:?} ms", input_tuple.0.unwrap(), input_tuple.1, curr_time_millis);
-
-    let mut msg = Message {
-        time: command_time.clone(),
-        state: MessageState::New,
-        id: 0,
-        command: command_arg,
-    };
-
-    if msg.time >= Ok(curr_time_millis) {
-        // Send to CmdDispathcer
-        msg.state = MessageState::Running;
-        handle_state(msg);
-        println!("Sent to CmdDispatcher");
-    } else {
-        error!("Command is of type 'now'. Should have been dispatched.")
+    if let Some(oldest_file) = oldest_file {
+        fs::remove_file(oldest_file.path())?;
     }
 
-    // TODO: create queue of incoming tasks. Assign priority values and sort based on time to be execcuted
-    // can create function for comparing UTC epoch values that returns true if ones before he other
-    // and an if statement uses this to determine whether the values will be swapped
-
+    Ok(())
 }
