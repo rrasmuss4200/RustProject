@@ -13,10 +13,8 @@ This program will also create two new files when it runs:
 ### Example Command:
 ```bash
 cargo run
-
 1
-
-2024-05-39 22:34:50
+2024-06-22 22:34:50
 ```
 
 where 1 is the command and the line below it is the execution time.
