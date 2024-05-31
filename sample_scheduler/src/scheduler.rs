@@ -40,7 +40,7 @@ pub fn write_input_tuple_to_rolling_file(input_tuple: &(Result<u64, String>, Str
         .map(|entry| entry.metadata().ok().map(|m| m.len()).unwrap_or(0))
         .sum();
 
-    // Specify the maximum size in bytes
+    // Specify the maximum size of entire directory in bytes
     let max_size_bytes: u64 = 2048; // 2 KB
 
     // If the total size exceeds the maximum size, remove the oldest file

@@ -1,4 +1,4 @@
-use log::{debug, error};
+use log::{debug, error, info};
 use log4rs;
 
 pub fn init_logger() {
@@ -12,4 +12,8 @@ pub fn init_logger() {
 
 pub fn log_error(e: String, id: u32) {
     error!("{} ID: {}", e, id);
+}
+
+pub fn log_info(e: String, id: u32) {
+    info!("{} ID: {}", e, id);
 }

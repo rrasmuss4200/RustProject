@@ -41,8 +41,9 @@ fn main() {
         println!("Input tuple written to file successfully.");
     }
 
-    println!("Command Time: {:?} ms, Command: {}\nUnix Epoch is {:?} ms", input_tuple.0.unwrap(), input_tuple.1, curr_time_millis);
+    println!("Command Time: {:?} ms, Command: {}\nCurrent time is {:?} ms", input_tuple.0.unwrap(), input_tuple.1, curr_time_millis);
 
+    // dummy message
     let mut msg = Message {
         time: command_time.clone(),
         state: MessageState::New,
@@ -53,8 +54,9 @@ fn main() {
     if msg.time >= Ok(curr_time_millis) {
         // Send to CmdDispathcer
         msg.state = MessageState::Running;
-        handle_state(msg);
+        handle_state(&msg);
         println!("Sent to CmdDispatcher");
+        log_info("Sent to CmdDispatcher".to_string(), msg.id);
     } else {
         log_error("Command is of type 'now'. Should have been dispatched.".to_string(), msg.id);
         eprint!("Error: Command was before Unix Epoch.\n");

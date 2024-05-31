@@ -15,7 +15,7 @@ pub struct Message {
     pub command: String,
 }
 
-pub fn handle_state(msg: Message) {
+pub fn handle_state(msg: &Message) {
     match msg.state {
         MessageState::New => {
             info!("New task received at {:?}. #{}",msg.time, msg.id);
