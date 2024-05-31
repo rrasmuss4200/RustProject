@@ -35,13 +35,8 @@ fn main() {
 
     let input_tuple: (Result<u64, String>, String) = (now.clone(),command_arg.clone());
 
-    if let Err(err) = write_input_tuple_to_rolling_file(&input_tuple) {
-        eprintln!("Failed to write input tuple to file: {}", err);
-    } else {
-        println!("Input tuple written to file successfully.");
-    }
 
-    println!("Command Time: {:?} ms, Command: {}\nCurrent time is {:?} ms", input_tuple.0.unwrap(), input_tuple.1, curr_time_millis);
+    println!("Command Time: {:?} ms, Command: {}\nCurrent time is {:?} ms", input_tuple.0.as_ref().unwrap(), input_tuple.1, curr_time_millis);
 
     // dummy message
     let mut msg = Message {
@@ -50,6 +45,14 @@ fn main() {
         id: 0,
         command: command_arg,
     };
+
+    // save to non-volatile memory
+    if let Err(err) = write_input_tuple_to_rolling_file(&input_tuple) {
+        eprintln!("Failed to write input tuple to file: {}", err);
+    } else {
+        println!("Input tuple written to file successfully.");
+        log_info("Command stored to file.".to_string(), msg.id)
+    }
 
     if msg.time >= Ok(curr_time_millis) {
         // Send to CmdDispathcer
@@ -70,6 +73,11 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::{self};
+
+    fn cleanup_test_dir(test_dir: &str) {
+        fs::remove_dir_all(test_dir).unwrap();
+    }
 
     #[test]
     fn conversion_test_valid_timestamp() {
@@ -133,16 +141,68 @@ mod tests {
     }
 
     #[test]
-fn conversion_test_valid_timestamp_2() {
-    let timestamp: String = "2027-02-05 02:04:38".to_string();
-    match timestamp_to_epoch(timestamp) {
-        Ok(epoch) => {
-            // Verify the epoch value is correct
-            let expected_epoch: u64 = 1801793078000;
-            assert_eq!(epoch, expected_epoch);
-        },
-        Err(e) => panic!("Expected valid date, but got error: {}", e),
+    fn conversion_test_valid_timestamp_2() {
+        let timestamp: String = "2027-02-05 02:04:38".to_string();
+        match timestamp_to_epoch(timestamp) {
+            Ok(epoch) => {
+                // Verify the epoch value is correct
+                let expected_epoch: u64 = 1801793078000;
+                assert_eq!(epoch, expected_epoch);
+            },
+            Err(e) => panic!("Expected valid date, but got error: {}", e),
+        }
     }
-}
+
+    #[test]
+    fn test_write_input_tuple_creates_file() {
+        // works when saved_commands directory not created yet. Just tests that 1 file is created
+        let test_dir = "saved_commands".to_string();
+        let input_tuple = (Ok(1717110630000), "Test command".to_string());
+
+        let result = write_input_tuple_to_rolling_file(&input_tuple);
+        assert!(result.is_ok());
+
+        let files: Vec<_> = fs::read_dir(&test_dir).unwrap().collect();
+        assert_eq!(files.len(), 1);
+
+        cleanup_test_dir(&test_dir);
+    }
+
+    #[test]
+    fn test_oldest_file_deletion() {
+        // works when saved_commands directory not created yet.
+        let test_dir = "saved_commands";
+        fs::create_dir_all(test_dir).unwrap();
+
+        let input_tuple = (12345, String::from("Test Command"));
+
+        // Create files to exceed the max size
+        for i in 0..2000 {
+            let new_timestamp: u64 = input_tuple.0.clone() + i;
+            write_input_tuple_to_rolling_file(&(Ok(new_timestamp), input_tuple.1.clone())).unwrap();
+        }
+
+        // Check initial number of files
+        let initial_files: Vec<_> = fs::read_dir(test_dir).unwrap().collect();
+        assert_eq!(initial_files.len(), 44);
+
+        // Write an input tuple to trigger the removal of the oldest file
+        let input_tuple = (Ok(12345), String::from("Test Command"));
+        write_input_tuple_to_rolling_file(&(input_tuple.0, input_tuple.1)).unwrap();
+
+        // Check final number of files
+        let final_files: Vec<_> = fs::read_dir(test_dir).unwrap().collect();
+        assert_eq!(final_files.len(), 44);
+
+        // Ensure the oldest file was removed
+        let files: Vec<_> = fs::read_dir(test_dir)
+            .unwrap()
+            .map(|res| res.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert!(!files.contains(&String::from("0.txt")));
+
+        // Cleanup
+        fs::remove_dir_all(test_dir).unwrap();
+    }
 
 }
