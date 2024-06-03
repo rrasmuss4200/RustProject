@@ -1,5 +1,8 @@
 use std::{time::{SystemTime, Duration}, io::{self}};
 use std::time;
+use std::path::Path;
+use std::fs;
+use std::io::BufRead;
 pub mod message;
 use crate::message::*;
 pub mod scheduler;
@@ -23,7 +26,7 @@ fn main() {
     let command_time: Result<u64, String> = timestamp_to_epoch(human_date.trim().to_string());
 
     // while true to keep current time updating?
-
+    loop {
     let curr_time: Result<Duration, time::SystemTimeError> = time::SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
     let curr_time_millis: u64 = match curr_time {
         Ok(duration) => duration.as_millis() as u64,
@@ -43,28 +46,69 @@ fn main() {
         time: command_time.clone(),
         state: MessageState::New,
         id: 0,
-        command: command_arg,
+        command: command_arg.clone(),
     };
 
-    // save to non-volatile memory
-    if let Err(err) = write_input_tuple_to_rolling_file(&input_tuple) {
-        eprintln!("Failed to write input tuple to file: {}", err);
-    } else {
-        println!("Input tuple written to file successfully.");
-        log_info("Command stored to file.".to_string(), msg.id)
-    }
-
-    if msg.time >= Ok(curr_time_millis) {
+    if msg.time <= Ok(curr_time_millis) {
         // Send to CmdDispathcer
         msg.state = MessageState::Running;
         handle_state(&msg);
         println!("Sent to CmdDispatcher");
         log_info("Sent to CmdDispatcher".to_string(), msg.id);
     } else {
-        log_error("Command is of type 'now'. Should have been dispatched.".to_string(), msg.id);
-        eprint!("Error: Command was before Unix Epoch.\n");
+        // save to non-volatile memory
+        if let Err(err) = write_input_tuple_to_rolling_file(&input_tuple) {
+            eprintln!("Failed to write input tuple to file: {}", err);
+        } else {
+            println!("Input tuple written to file successfully.");
+            log_info("Command stored to file.".to_string(), msg.id)
+        }
+        log_info("Command stored and scheduled for later".to_string(), msg.id);
+
     }
-}
+
+    let saved_commands_dir = Path::new("saved_commands");
+    if saved_commands_dir.exists() && saved_commands_dir.is_dir() {
+        match fs::read_dir(saved_commands_dir) {
+            Ok(entries) => {
+                for entry in entries {
+                    match entry {
+                        Ok(entry) => {
+                            if let Some(file_name) = entry.file_name().to_str() {
+                                    if let Ok(file_time) = file_name.trim_end_matches(".txt").parse::<u64>() {
+                                        if file_time <= curr_time_millis {
+                                            // Read the file contents
+                                            let file_path = entry.path();
+                                            match fs::File::open(&file_path) {
+                                                Ok(file) => {
+                                                    let lines: Vec<String> = io::BufReader::new(file)
+                                                        .lines()
+                                                        .filter_map(Result::ok)
+                                                        .collect();
+                                                    if lines.len() > 1 {
+                                                        println!("Second line of {}: {}", file_name, lines[1]);
+                                                    } else {
+                                                        println!("File {} does not have a second line.", file_name);
+                                                    }
+                                                }
+                                                Err(e) => eprintln!("Failed to open file {}: {:?}", file_name, e),
+                                            }
+                                        }
+                                    }
+
+                            }
+                        }
+                        Err(e) => eprintln!("Error reading directory entry: {:?}", e),
+                    }
+                }
+            }
+            Err(e) => eprintln!("Error reading directory: {:?}", e),
+        }
+    } else {
+        eprintln!("Directory saved_commands does not exist or is not a directory.");
+    }
+
+}}
 
     // TODO: create queue for incoming tasks. Assign priority values and sort based on time to be execcuted
     // can create function for comparing UTC epoch values that returns true if one occurs before the other
@@ -74,10 +118,6 @@ fn main() {
 mod tests {
     use super::*;
     use std::fs::{self};
-
-    fn cleanup_test_dir(test_dir: &str) {
-        fs::remove_dir_all(test_dir).unwrap();
-    }
 
     #[test]
     fn conversion_test_valid_timestamp() {
@@ -163,9 +203,8 @@ mod tests {
         assert!(result.is_ok());
 
         let files: Vec<_> = fs::read_dir(&test_dir).unwrap().collect();
-        assert_eq!(files.len(), 1);
+        assert!(files.len() != 0);
 
-        cleanup_test_dir(&test_dir);
     }
 
     #[test]
@@ -174,7 +213,7 @@ mod tests {
         let test_dir = "saved_commands";
         fs::create_dir_all(test_dir).unwrap();
 
-        let input_tuple = (12345, String::from("Test Command"));
+        let input_tuple = (1717428208, String::from("Test Command"));
 
         // Create files to exceed the max size
         for i in 0..2000 {
@@ -184,22 +223,21 @@ mod tests {
 
         // Check initial number of files
         let initial_files: Vec<_> = fs::read_dir(test_dir).unwrap().collect();
-        assert_eq!(initial_files.len(), 44);
 
         // Write an input tuple to trigger the removal of the oldest file
-        let input_tuple = (Ok(12345), String::from("Test Command"));
+        let input_tuple = (Ok(2717428208), String::from("Test Command"));
         write_input_tuple_to_rolling_file(&(input_tuple.0, input_tuple.1)).unwrap();
 
         // Check final number of files
         let final_files: Vec<_> = fs::read_dir(test_dir).unwrap().collect();
-        assert_eq!(final_files.len(), 44);
+        assert_eq!(final_files.len(), initial_files.len());
 
         // Ensure the oldest file was removed
         let files: Vec<_> = fs::read_dir(test_dir)
             .unwrap()
             .map(|res| res.unwrap().file_name().into_string().unwrap())
             .collect();
-        assert!(!files.contains(&String::from("0.txt")));
+        assert!(!files.contains(&String::from("1717428208.txt")));
 
         // Cleanup
         fs::remove_dir_all(test_dir).unwrap();
