@@ -40,7 +40,7 @@ pub fn write_input_tuple_to_rolling_file(input_tuple: &(Result<u64, String>, Str
         .map(|entry| entry.metadata().ok().map(|m| m.len()).unwrap_or(0))
         .sum();
 
-    // Specify the maximum size of entire directory in bytes
+    // Specify the maximum size of saved_commands directory in bytes
     let max_size_bytes: u64 = 2048; // 2 KB
 
     // If the total size exceeds the maximum size, remove the oldest file
@@ -49,12 +49,12 @@ pub fn write_input_tuple_to_rolling_file(input_tuple: &(Result<u64, String>, Str
     }
 
     // Create a new file
-    let file_name = format!("{}.txt", Utc::now().timestamp_millis());
+    let file_name = format!("{}.txt", input_tuple.0.as_ref().unwrap());
     let file_path = Path::new(dir_path).join(&file_name);
     let mut file = File::create(&file_path)?;
 
     // Write input_tuple to the file
-    writeln!(file, "Command Time: {:?} ms, Command: {}", input_tuple.0.as_ref().unwrap(), input_tuple.1)?;
+    writeln!(file, "{:?}\n{}", input_tuple.0.as_ref().unwrap(), input_tuple.1)?;
 
     Ok(())
 }
