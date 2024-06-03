@@ -15,17 +15,18 @@ fn main() {
     init_logger();
 
     let stdin = io::stdin();
+
+    let mut cmd_count: u32 = 0;
+    // if cmd_count = max - 1, then reset
+    while cmd_count < u32::MAX {
     let mut command_arg = String::new();
     stdin.read_line(&mut command_arg).expect("Failed to read command");
 
-    // Read the second line from stdin
     let mut human_date = String::new();
     stdin.read_line(&mut human_date).expect("Failed to read date");
 
     // Convert input human-readable time to epoch time to compare times when program is run
     let command_time: Result<u64, String> = timestamp_to_epoch(human_date.trim().to_string());
-
-    // while true to keep current time updating?
 
     let curr_time: Result<Duration, time::SystemTimeError> = time::SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
     let curr_time_millis: u64 = match curr_time {
@@ -34,18 +35,15 @@ fn main() {
     return;}
     };
 
-    let now: Result<u64, String> = command_time.clone();
-
-    let input_tuple: (Result<u64, String>, String) = (now.clone(),command_arg.clone());
-
-
-    println!("Command Time: {:?} ms, Command: {}\nCurrent time is {:?} ms", input_tuple.0.as_ref().unwrap(), input_tuple.1, curr_time_millis);
+    let input_tuple: (Result<u64, String>, String) = (command_time.clone(),command_arg.clone());
+    cmd_count += 1;
+    println!("Command Time: {:?} ms, Command: {}Current time is {:?} ms", input_tuple.0.as_ref().unwrap(), input_tuple.1, curr_time_millis);
 
     // dummy message
     let mut msg = Message {
         time: command_time.clone(),
         state: MessageState::New,
-        id: 0,
+        id: cmd_count,
         command: command_arg.clone(),
     };
 
@@ -61,7 +59,6 @@ fn main() {
             eprintln!("Failed to write input tuple to file: {}", err);
         } else {
             println!("Input tuple written to file successfully.");
-            log_info("Command stored to file.".to_string(), msg.id)
         }
         log_info("Command stored and scheduled for later".to_string(), msg.id);
 
@@ -86,9 +83,9 @@ fn main() {
                                                         .filter_map(Result::ok)
                                                         .collect();
                                                     if lines.len() > 1 {
-                                                        println!("Second line of {}: {}", file_name, lines[1]);
+                                                        println!("Command of {}: {}", file_name, lines[1]);
                                                     } else {
-                                                        println!("File {} does not have a second line.", file_name);
+                                                        println!("File {} does not have a command.", file_name);
                                                     }
                                                 }
                                                 Err(e) => eprintln!("Failed to open file {}: {:?}", file_name, e),
@@ -108,7 +105,7 @@ fn main() {
         eprintln!("Directory saved_commands does not exist or is not a directory.");
     }
 
-}
+}}
 
     // TODO: create queue for incoming tasks. Assign priority values and sort based on time to be execcuted
     // can create function for comparing UTC epoch values that returns true if one occurs before the other
@@ -195,7 +192,6 @@ mod tests {
 
     #[test]
     fn test_write_input_tuple_creates_file() {
-        // works when saved_commands directory not created yet. Just tests that 1 file is created
         let test_dir = "saved_commands".to_string();
         let input_tuple = (Ok(1717110630000), "Test command".to_string());
 
@@ -209,7 +205,6 @@ mod tests {
 
     #[test]
     fn test_oldest_file_deletion() {
-        // works when saved_commands directory not created yet.
         let test_dir = "saved_commands";
         fs::create_dir_all(test_dir).unwrap();
 
