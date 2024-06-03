@@ -26,7 +26,7 @@ fn main() {
     let command_time: Result<u64, String> = timestamp_to_epoch(human_date.trim().to_string());
 
     // while true to keep current time updating?
-    loop {
+
     let curr_time: Result<Duration, time::SystemTimeError> = time::SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
     let curr_time_millis: u64 = match curr_time {
         Ok(duration) => duration.as_millis() as u64,
@@ -108,7 +108,7 @@ fn main() {
         eprintln!("Directory saved_commands does not exist or is not a directory.");
     }
 
-}}
+}
 
     // TODO: create queue for incoming tasks. Assign priority values and sort based on time to be execcuted
     // can create function for comparing UTC epoch values that returns true if one occurs before the other
